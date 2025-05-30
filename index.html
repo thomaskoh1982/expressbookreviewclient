@@ -13,6 +13,11 @@
             <button id="login-btn">Login</button>
             <div id="user-greeting" class="hidden"></div>
         </div>
+		<!-- Add to header section -->
+<button id="logout-btn" class="hidden">Logout</button>
+
+<!-- Update modal content -->
+</div>
     </header>
 
     <main>
@@ -26,14 +31,23 @@
         </section>
 
         <div id="modal" class="hidden">
-            <div class="modal-content">
-                <span class="close-btn">&times;</span>
-                <h2 id="modal-title"></h2>
-                <div id="reviews-container"></div>
-                <form id="review-form" class="hidden">
-                    <textarea id="review-text" placeholder="Write your review..."></textarea>
-                    <button type="submit">Submit Review</button>
-                </form>
+            <!-- Update modal content -->
+<div class="modal-content">
+    <span class="close-btn">&times;</span>
+    <h2 id="modal-title"></h2>
+    <div id="book-details"></div>
+    <div id="reviews-container"></div>
+    <form id="review-form" class="hidden">
+        <textarea id="review-text" placeholder="Write your review..." required></textarea>
+        <select id="review-rating">
+            <option value="5">★★★★★</option>
+            <option value="4">★★★★☆</option>
+            <option value="3">★★★☆☆</option>
+            <option value="2">★★☆☆☆</option>
+            <option value="1">★☆☆☆☆</option>
+        </select>
+        <button type="submit">Submit Review</button>
+    </form>
             </div>
         </div>
 
