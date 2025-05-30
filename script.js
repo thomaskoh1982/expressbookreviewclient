@@ -1,267 +1,441 @@
-// API Configuration
-const API_BASE = 'https://express-book-reviews-one.vercel.app/'; // Replace with your actual URL
-let authToken = null;
-let currentUser = null;
+const API_BASE_URL = 'https://express-book-reviews-one.vercel.app/'; // Update if your backend is hosted elsewhere
 
 // DOM Elements
-const booksContainer = document.getElementById('books-container');
-const searchInput = document.getElementById('search-input');
-const searchBtn = document.getElementById('search-btn');
-const loginBtn = document.getElementById('login-btn');
-const logoutBtn = document.getElementById('logout-btn');
-const userGreeting = document.getElementById('user-greeting');
-const modal = document.getElementById('modal');
-const loginModal = document.getElementById('login-modal');
-const closeBtns = document.querySelectorAll('.close-btn');
-const modalTitle = document.getElementById('modal-title');
-const bookDetails = document.getElementById('book-details');
-const reviewsContainer = document.getElementById('reviews-container');
-const reviewForm = document.getElementById('review-form');
-const loginForm = document.getElementById('login-form');
+const sections = {
+    'all-books': document.getElementById('all-books'),
+    'search-books': document.getElementById('search-books'),
+    'reviews-section': document.getElementById('reviews-section'),
+    'book-details': document.getElementById('book-details')
+};
 
-// Current state
-let currentBookId = null;
-let allBooks = {};
+let currentUser = null;
+let currentToken = null;
+let selectedBook = null;
 
-// Event Listeners
-searchBtn.addEventListener('click', searchBooks);
-loginBtn.addEventListener('click', () => loginModal.classList.remove('hidden'));
-logoutBtn.addEventListener('click', handleLogout);
-closeBtns.forEach(btn => btn.addEventListener('click', closeModals));
-reviewForm.addEventListener('submit', submitReview);
-loginForm.addEventListener('submit', handleLogin);
+// Initialize the app
+document.addEventListener('DOMContentLoaded', () => {
+    setupEventListeners();
+    loadAllBooks();
+});
 
-// Initialize
-fetchBooks();
+function setupEventListeners() {
+    // Navigation
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const sectionId = btn.dataset.section;
+            showSection(sectionId);
+        });
+    });
 
-// API Functions
-async function fetchBooks() {
-    try {
-        const response = await fetch(`${API_BASE}/`);
-        allBooks = await response.json();
-        displayBooks(allBooks);
-    } catch (error) {
-        console.error('Error fetching books:', error);
-        showError('Failed to load books');
+    // Authentication
+    document.getElementById('login-btn').addEventListener('click', login);
+    document.getElementById('register-btn').addEventListener('click', register);
+    document.getElementById('logout-btn').addEventListener('click', logout);
+
+    // Search
+    document.getElementById('search-btn').addEventListener('click', performSearch);
+
+    // Reviews
+    document.getElementById('submit-review').addEventListener('click', submitReview);
+    document.getElementById('update-review').addEventListener('click', updateReview);
+    document.getElementById('delete-review').addEventListener('click', deleteReview);
+    document.getElementById('back-btn').addEventListener('click', () => showSection('all-books'));
+}
+
+function showSection(sectionId) {
+    // Hide all sections
+    Object.values(sections).forEach(section => {
+        section.style.display = 'none';
+        section.classList.remove('active');
+    });
+
+    // Show selected section
+    const section = sections[sectionId];
+    if (section) {
+        section.style.display = 'block';
+        section.classList.add('active');
+    }
+
+    // Load data if needed
+    if (sectionId === 'reviews-section' && currentUser) {
+        loadUserReviews();
     }
 }
 
-function searchBooks() {
-    const query = searchInput.value.trim().toLowerCase();
-    if (!query) {
-        displayBooks(allBooks);
+// Authentication functions
+async function login() {
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+
+    if (!username || !password) {
+        alert('Please enter both username and password');
         return;
     }
 
-    const filteredBooks = Object.entries(allBooks).reduce((acc, [id, book]) => {
-        if (book.title.toLowerCase().includes(query) || 
-            book.author.toLowerCase().includes(query)) {
-            acc[id] = book;
-        }
-        return acc;
-    }, {});
-
-    displayBooks(filteredBooks);
-}
-
-async function getBookDetails(bookId) {
     try {
-        const response = await fetch(`${API_BASE}/book/${bookId}`);
-        return await response.json();
-    } catch (error) {
-        console.error('Error fetching book details:', error);
-        showError('Failed to load book details');
-        return null;
-    }
-}
-
-async function submitReview(e) {
-    e.preventDefault();
-    if (!authToken) return;
-    
-    const reviewText = document.getElementById('review-text').value;
-    try {
-        const response = await fetch(`${API_BASE}/customer/review/${currentBookId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ 
-                text: reviewText,
-                rating: document.getElementById('review-rating').value 
-            })
-        });
-        
-        if (response.ok) {
-            const book = await getBookDetails(currentBookId);
-            displayBookModal(book);
-            reviewForm.reset();
-        } else {
-            showError('Failed to submit review');
-        }
-    } catch (error) {
-        console.error('Error submitting review:', error);
-        showError('Review submission failed');
-    }
-}
-
-async function handleLogin(e) {
-    e.preventDefault();
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-    
-    try {
-        const response = await fetch(`${API_BASE}/customer/login`, {
+        const response = await fetch(`${API_BASE_URL}/customer/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ username, password })
         });
-        
+
         if (response.ok) {
             const data = await response.json();
-            authToken = data.token;
             currentUser = username;
-            updateAuthUI();
-            loginModal.classList.add('hidden');
-            loginForm.reset();
+            currentToken = data.token;
+            
+            // Update UI
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('user-info').style.display = 'block';
+            document.getElementById('logged-in-user').textContent = `Welcome, ${username}`;
+            document.getElementById('reviews-btn').style.display = 'block';
+            
+            alert('Login successful');
         } else {
-            showError('Invalid username or password');
+            const error = await response.text();
+            alert(`Login failed: ${error}`);
         }
     } catch (error) {
-        console.error('Error logging in:', error);
-        showError('Login failed');
+        console.error('Login error:', error);
+        alert('Login failed. Please try again.');
     }
 }
 
-async function handleLogout() {
-    authToken = null;
-    currentUser = null;
-    updateAuthUI();
-    if (!modal.classList.contains('hidden')) {
-        const book = await getBookDetails(currentBookId);
-        displayBookModal(book);
-    }
-}
+async function register() {
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
 
-// UI Functions
-function displayBooks(books) {
-    booksContainer.innerHTML = '';
-    
-    Object.entries(books).forEach(([id, book]) => {
-        const bookCard = document.createElement('div');
-        bookCard.className = 'book-card';
-        bookCard.innerHTML = `
-            <h3>${book.title}</h3>
-            <p class="author">by ${book.author}</p>
-            <div class="review-count">
-                ${Object.keys(book.reviews).length} review(s)
-            </div>
-        `;
-        bookCard.addEventListener('click', () => openBookModal(id));
-        booksContainer.appendChild(bookCard);
-    });
-}
-
-async function openBookModal(bookId) {
-    currentBookId = bookId;
-    const book = await getBookDetails(bookId);
-    if (!book) return;
-    
-    displayBookModal(book);
-    modal.classList.remove('hidden');
-}
-
-function displayBookModal(book) {
-    modalTitle.textContent = book.title;
-    
-    bookDetails.innerHTML = `
-        <p class="author">by ${book.author}</p>
-        ${book.description ? `<p class="description">${book.description}</p>` : ''}
-    `;
-    
-    reviewsContainer.innerHTML = '';
-    
-    if (book.reviews && Object.keys(book.reviews).length > 0) {
-        displayReviews(book.reviews);
-    } else {
-        reviewsContainer.innerHTML = '<p class="no-reviews">No reviews yet. Be the first to review!</p>';
-    }
-    
-    reviewForm.classList.toggle('hidden', !authToken);
-}
-
-function displayReviews(reviews) {
-    reviewsContainer.innerHTML = '';
-    
-    Object.entries(reviews).forEach(([id, review]) => {
-        const reviewElement = document.createElement('div');
-        reviewElement.className = 'review';
-        reviewElement.innerHTML = `
-            <div class="review-header">
-                <strong>${review.username || 'Anonymous'}</strong>
-                ${review.rating ? `<span class="rating">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</span>` : ''}
-            </div>
-            <p class="review-text">${review.text}</p>
-            <small class="review-date">${new Date(review.date).toLocaleDateString()}</small>
-        `;
-        reviewsContainer.appendChild(reviewElement);
-    });
-}
-
-function updateAuthUI() {
-    if (authToken) {
-        loginBtn.classList.add('hidden');
-        logoutBtn.classList.remove('hidden');
-        userGreeting.classList.remove('hidden');
-        userGreeting.textContent = `Welcome, ${currentUser}`;
-    } else {
-        loginBtn.classList.remove('hidden');
-        logoutBtn.classList.add('hidden');
-        userGreeting.classList.add('hidden');
-    }
-}
-
-function closeModals() {
-    modal.classList.add('hidden');
-    loginModal.classList.add('hidden');
-}
-
-function showError(message) {
-    const errorElement = document.createElement('div');
-    errorElement.className = 'error-message';
-    errorElement.textContent = message;
-    document.body.appendChild(errorElement);
-    setTimeout(() => errorElement.remove(), 3000);
-}
-
-function performSearch() {
-    const searchTerm = searchInput.value.trim().toLowerCase();
-    
-    if (!searchTerm) {
-        displayBooks(allBooks);
-        clearSearchBtn.classList.add('hidden');
+    if (!username || !password) {
+        alert('Please enter both username and password');
         return;
     }
 
-    const searchTerms = searchTerm.split(' ').filter(term => term.length > 0);
-    
-    const filteredBooks = Object.entries(allBooks).reduce((result, [id, book]) => {
-        const title = book.title.toLowerCase();
-        const author = book.author.toLowerCase();
-        
-        // Check if all search terms match in either title or author
-        const matches = searchTerms.every(term => 
-            title.includes(term) || author.includes(term)
-        );
-        
-        if (matches) {
-            result[id] = book;
-        }
-        return result;
-    }, {});
+    try {
+        const response = await fetch(`${API_BASE_URL}/register`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username, password })
+        });
 
-    displayBooks(filteredBooks);
-    clearSearchBtn.classList.remove('hidden');
+        const data = await response.text();
+        alert(data);
+    } catch (error) {
+        console.error('Registration error:', error);
+        alert('Registration failed. Please try again.');
+    }
+}
+
+function logout() {
+    currentUser = null;
+    currentToken = null;
+    
+    // Update UI
+    document.getElementById('login-form').style.display = 'block';
+    document.getElementById('user-info').style.display = 'none';
+    document.getElementById('username').value = '';
+    document.getElementById('password').value = '';
+    document.getElementById('reviews-btn').style.display = 'none';
+    
+    alert('Logged out successfully');
+}
+
+// Book functions
+async function loadAllBooks() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/`);
+        const books = await response.json();
+        displayBooks(books, 'books-container');
+    } catch (error) {
+        console.error('Error loading books:', error);
+        document.getElementById('books-container').innerHTML = '<p>Error loading books. Please try again.</p>';
+    }
+}
+
+async function performSearch() {
+    const searchType = document.getElementById('search-type').value;
+    const searchTerm = document.getElementById('search-input').value;
+
+    if (!searchTerm) {
+        alert('Please enter a search term');
+        return;
+    }
+
+    try {
+        let endpoint = '';
+        switch(searchType) {
+            case 'isbn':
+                endpoint = `/isbn/${searchTerm}`;
+                break;
+            case 'author':
+                endpoint = `/author/${encodeURIComponent(searchTerm)}`;
+                break;
+            case 'title':
+                endpoint = `/title/${encodeURIComponent(searchTerm)}`;
+                break;
+        }
+
+        const response = await fetch(`${API_BASE_URL}${endpoint}`);
+        
+        if (response.ok) {
+            const result = await response.json();
+            // Handle different response formats
+            if (Array.isArray(result)) {
+                displayBooks(result, 'search-results');
+            } else if (typeof result === 'object') {
+                displayBooks([result], 'search-results');
+            } else {
+                // Handle string responses (from some endpoints)
+                document.getElementById('search-results').innerHTML = `<p>${result}</p>`;
+            }
+        } else {
+            const error = await response.text();
+            document.getElementById('search-results').innerHTML = `<p>${error}</p>`;
+        }
+    } catch (error) {
+        console.error('Search error:', error);
+        document.getElementById('search-results').innerHTML = '<p>Error performing search. Please try again.</p>';
+    }
+}
+
+function displayBooks(books, containerId) {
+    const container = document.getElementById(containerId);
+    
+    if (!books || (Array.isArray(books) && books.length === 0)) {
+        container.innerHTML = '<p>No books found.</p>';
+        return;
+    }
+
+    // Convert single book to array for consistent handling
+    if (!Array.isArray(books)) {
+        books = [books];
+    }
+
+    container.innerHTML = books.map(book => `
+        <div class="book-card" data-isbn="${Object.keys(book)[0] || book.isbn}">
+            <h3>${book.title || book[Object.keys(book)[0]].title}</h3>
+            <p>By ${book.author || book[Object.keys(book)[0]].author}</p>
+            <button class="view-details-btn">View Details</button>
+        </div>
+    `).join('');
+
+    // Add event listeners to the book cards
+    document.querySelectorAll('.book-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            // Don't trigger if a button was clicked
+            if (e.target.tagName === 'BUTTON') return;
+            
+            const isbn = card.dataset.isbn;
+            showBookDetails(isbn);
+        });
+    });
+
+    // Add event listeners to view details buttons
+    document.querySelectorAll('.view-details-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const isbn = e.target.closest('.book-card').dataset.isbn;
+            showBookDetails(isbn);
+        });
+    });
+}
+
+async function showBookDetails(isbn) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/isbn/${isbn}`);
+        const book = await response.json();
+        
+        selectedBook = book;
+        
+        // Update UI
+        document.getElementById('book-title').textContent = book.title;
+        document.getElementById('book-author').textContent = `By ${book.author}`;
+        
+        // Load reviews
+        const reviewsResponse = await fetch(`${API_BASE_URL}/review/${isbn}`);
+        let reviews = await reviewsResponse.json();
+        
+        // Handle different review formats
+        if (typeof reviews === 'string') {
+            document.getElementById('reviews-list').innerHTML = `<p>${reviews}</p>`;
+        } else {
+            document.getElementById('reviews-list').innerHTML = Object.values(reviews).map(review => `
+                <div class="review-item">
+                    <strong>${review.username}</strong>
+                    <p>${review.review}</p>
+                    ${currentUser === review.username ? 
+                        `<button class="edit-review-btn" data-review-id="${Object.keys(reviews).find(key => reviews[key].username === review.username)}">Edit</button>` : ''}
+                </div>
+            `).join('');
+            
+            // Add event listeners to edit buttons
+            document.querySelectorAll('.edit-review-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const reviewId = e.target.dataset.reviewId;
+                    const review = reviews[reviewId];
+                    
+                    document.getElementById('review-text').value = review.review;
+                    document.getElementById('submit-review').style.display = 'none';
+                    document.getElementById('update-review').style.display = 'inline-block';
+                    document.getElementById('delete-review').style.display = 'inline-block';
+                    
+                    // Store the review ID for update/delete
+                    document.getElementById('update-review').dataset.reviewId = reviewId;
+                    document.getElementById('delete-review').dataset.reviewId = reviewId;
+                });
+            });
+        }
+        
+        // Reset review form
+        document.getElementById('review-text').value = '';
+        document.getElementById('submit-review').style.display = 'inline-block';
+        document.getElementById('update-review').style.display = 'none';
+        document.getElementById('delete-review').style.display = 'none';
+        
+        showSection('book-details');
+    } catch (error) {
+        console.error('Error loading book details:', error);
+        alert('Error loading book details. Please try again.');
+    }
+}
+
+// Review functions
+async function submitReview() {
+    if (!currentUser) {
+        alert('Please login to submit a review');
+        return;
+    }
+
+    const reviewText = document.getElementById('review-text').value;
+    if (!reviewText) {
+        alert('Please enter a review');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/customer/auth/review/${selectedBook.isbn || Object.keys(selectedBook)[0]}?review=${encodeURIComponent(reviewText)}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${currentToken}`
+            }
+        });
+
+        const result = await response.text();
+        alert(result);
+        
+        // Refresh the book details
+        showBookDetails(selectedBook.isbn || Object.keys(selectedBook)[0]);
+    } catch (error) {
+        console.error('Error submitting review:', error);
+        alert('Error submitting review. Please try again.');
+    }
+}
+
+async function updateReview() {
+    const reviewText = document.getElementById('review-text').value;
+    if (!reviewText) {
+        alert('Please enter a review');
+        return;
+    }
+
+    const reviewId = document.getElementById('update-review').dataset.reviewId;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/customer/auth/review/${selectedBook.isbn || Object.keys(selectedBook)[0]}?review=${encodeURIComponent(reviewText)}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${currentToken}`
+            }
+        });
+
+        const result = await response.text();
+        alert(result);
+        
+        // Refresh the book details
+        showBookDetails(selectedBook.isbn || Object.keys(selectedBook)[0]);
+    } catch (error) {
+        console.error('Error updating review:', error);
+        alert('Error updating review. Please try again.');
+    }
+}
+
+async function deleteReview() {
+    if (!confirm('Are you sure you want to delete this review?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/customer/auth/review/${selectedBook.isbn || Object.keys(selectedBook)[0]}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${currentToken}`
+            }
+        });
+
+        const result = await response.text();
+        alert(result);
+        
+        // Refresh the book details
+        showBookDetails(selectedBook.isbn || Object.keys(selectedBook)[0]);
+    } catch (error) {
+        console.error('Error deleting review:', error);
+        alert('Error deleting review. Please try again.');
+    }
+}
+
+async function loadUserReviews() {
+    if (!currentUser) return;
+
+    try {
+        // Get all books first
+        const booksResponse = await fetch(`${API_BASE_URL}/`);
+        const books = await booksResponse.json();
+
+        // Check each book for reviews by the current user
+        let userReviews = [];
+        
+        for (const isbn in books) {
+            const reviewResponse = await fetch(`${API_BASE_URL}/review/${isbn}`);
+            const reviews = await reviewResponse.json();
+            
+            if (typeof reviews !== 'string') { // Skip if no reviews
+                for (const reviewId in reviews) {
+                    if (reviews[reviewId].username === currentUser) {
+                        userReviews.push({
+                            book: books[isbn],
+                            review: reviews[reviewId]
+                        });
+                    }
+                }
+            }
+        }
+
+        // Display user reviews
+        const container = document.getElementById('reviews-container');
+        if (userReviews.length === 0) {
+            container.innerHTML = '<p>You have not submitted any reviews yet.</p>';
+        } else {
+            container.innerHTML = userReviews.map(item => `
+                <div class="review-item">
+                    <h3>${item.book.title}</h3>
+                    <p>By ${item.book.author}</p>
+                    <p>${item.review.review}</p>
+                    <button class="edit-book-review" data-isbn="${isbn}">Edit Review</button>
+                </div>
+            `).join('');
+
+            // Add event listeners to edit buttons
+            document.querySelectorAll('.edit-book-review').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const isbn = e.target.dataset.isbn;
+                    showBookDetails(isbn);
+                });
+            });
+        }
+    } catch (error) {
+        console.error('Error loading user reviews:', error);
+        document.getElementById('reviews-container').innerHTML = '<p>Error loading your reviews. Please try again.</p>';
+    }
+}
