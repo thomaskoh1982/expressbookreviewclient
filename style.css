@@ -100,3 +100,60 @@ button {
 button:hover {
     background: #2980b9;
 }
+
+/* Add these new styles */
+.author {
+    color: #666;
+    font-style: italic;
+}
+
+.review-count {
+    margin-top: 0.5rem;
+    color: #3498db;
+    font-size: 0.9rem;
+}
+
+.description {
+    margin: 1rem 0;
+    line-height: 1.6;
+}
+
+.review-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.rating {
+    color: #f39c12;
+}
+
+.review-text {
+    margin: 0.5rem 0;
+}
+
+.review-date {
+    color: #999;
+}
+
+.error-message {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    background: #e74c3c;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 3px;
+    animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.no-reviews {
+    color: #666;
+    text-align: center;
+    padding: 1rem;
+}
