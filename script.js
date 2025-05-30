@@ -236,3 +236,32 @@ function showError(message) {
     document.body.appendChild(errorElement);
     setTimeout(() => errorElement.remove(), 3000);
 }
+
+function performSearch() {
+    const searchTerm = searchInput.value.trim().toLowerCase();
+    
+    if (!searchTerm) {
+        displayBooks(allBooks);
+        clearSearchBtn.classList.add('hidden');
+        return;
+    }
+
+    const searchTerms = searchTerm.split(' ').filter(term => term.length > 0);
+    
+    const filteredBooks = Object.entries(allBooks).reduce((result, [id, book]) => {
+        const title = book.title.toLowerCase();
+        const author = book.author.toLowerCase();
+        
+        // Check if all search terms match in either title or author
+        const matches = searchTerms.every(term => 
+            title.includes(term) || author.includes(term)
+        );
+        
+        if (matches) {
+            result[id] = book;
+        }
+        return result;
+    }, {});
+
+    displayBooks(filteredBooks);
+    clearSearchBtn.classList.remove('hidden');
