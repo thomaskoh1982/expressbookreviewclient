@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://express-book-reviews-one.vercel.app';
+const API_BASE_URL = 'https://express-book-reviews-two.vercel.app/';
 // DOM Elements
 const sections = {
     'all-books': document.getElementById('all-books'),
