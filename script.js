@@ -1,4 +1,5 @@
-const API_BASE_URL = 'https://express-book-reviews-beta.vercel.app/';
+const API_BASE_URL = 'https://express-book-reviews-beta.vercel.app';
+
 // DOM Elements
 const sections = {
     'all-books': document.getElementById('all-books'),
@@ -139,6 +140,9 @@ function logout() {
     document.getElementById('password').value = '';
     document.getElementById('reviews-btn').style.display = 'none';
     
+    // Refresh data
+    loadAllBooks();
+    showSection('all-books');
     alert('Logged out successfully');
 }
 
@@ -146,20 +150,30 @@ function logout() {
 async function loadAllBooks() {
     try {
         const response = await fetch(`${API_BASE_URL}/`);
-        const books = await response.json();
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('API response:', data); // For debugging
+        
+        // Extract books from the response
+        const books = data.books ? Object.values(data.books) : [];
         displayBooks(books, 'books-container');
     } catch (error) {
         console.error('Error loading books:', error);
-        document.getElementById('books-container').innerHTML = '<p>Error loading books. Please try again.</p>';
+        document.getElementById('books-container').innerHTML = 
+            `<p>Error loading books: ${error.message}</p>`;
     }
 }
 
 async function performSearch() {
     const searchType = document.getElementById('search-type').value;
-    const searchTerm = document.getElementById('search-input').value;
+    const searchTerm = document.getElementById('search-input').value.trim();
+    const resultsContainer = document.getElementById('search-results');
 
     if (!searchTerm) {
-        alert('Please enter a search term');
+        resultsContainer.innerHTML = '<p>Please enter a search term</p>';
         return;
     }
 
@@ -175,31 +189,52 @@ async function performSearch() {
             case 'title':
                 endpoint = `/title/${encodeURIComponent(searchTerm)}`;
                 break;
+            default:
+                resultsContainer.innerHTML = '<p>Invalid search type</p>';
+                return;
         }
 
         const response = await fetch(`${API_BASE_URL}${endpoint}`);
         
-        if (response.ok) {
-            const result = await response.json();
-            // Handle different response formats
-            if (Array.isArray(result)) {
-                displayBooks(result, 'search-results');
-            } else if (typeof result === 'object') {
-                displayBooks([result], 'search-results');
-            } else {
-                // Handle string responses (from some endpoints)
-                document.getElementById('search-results').innerHTML = `<p>${result}</p>`;
-            }
-        } else {
-            const error = await response.text();
-            document.getElementById('search-results').innerHTML = `<p>${error}</p>`;
+        if (!response.ok) {
+            const errorText = await response.text();
+            resultsContainer.innerHTML = `<p>${errorText || 'Search failed'}</p>`;
+            return;
         }
+
+        const contentType = response.headers.get('content-type');
+        let result;
+
+        if (contentType && contentType.includes('application/json')) {
+            result = await response.json();
+        } else {
+            result = await response.text();
+            try {
+                result = JSON.parse(result);
+            } catch {
+                resultsContainer.innerHTML = `<p>${result}</p>`;
+                return;
+            }
+        }
+
+        if (Array.isArray(result)) {
+            displayBooks(result, 'search-results');
+        } else if (result && typeof result === 'object') {
+            displayBooks([result], 'search-results');
+        } else if (typeof result === 'string') {
+            resultsContainer.innerHTML = `<p>${result}</p>`;
+        } else {
+            resultsContainer.innerHTML = '<p>No results found</p>';
+        }
+
     } catch (error) {
         console.error('Search error:', error);
-        document.getElementById('search-results').innerHTML = '<p>Error performing search. Please try again.</p>';
+        resultsContainer.innerHTML = `
+            <p>Error performing search: ${error.message}</p>
+            <p>Please try again later.</p>
+        `;
     }
 }
-
 function displayBooks(books, containerId) {
     const container = document.getElementById(containerId);
     
@@ -208,31 +243,28 @@ function displayBooks(books, containerId) {
         return;
     }
 
-    // Convert single book to array for consistent handling
+    // Convert to array if it's an object
     if (!Array.isArray(books)) {
-        books = [books];
+        books = Object.values(books);
     }
 
-    container.innerHTML = books.map(book => `
-        <div class="book-card" data-isbn="${Object.keys(book)[0] || book.isbn}">
-            <h3>${book.title || book[Object.keys(book)[0]].title}</h3>
-            <p>By ${book.author || book[Object.keys(book)[0]].author}</p>
-            <button class="view-details-btn">View Details</button>
-        </div>
-    `).join('');
+    container.innerHTML = books.map(book => {
+        // Handle different response formats
+        const bookData = book.title ? book : (book.book || book[Object.keys(book)[0]]);
+        const isbn = book.isbn || Object.keys(book)[0];
+        const title = bookData?.title || 'Unknown Title';
+        const author = bookData?.author || 'Unknown Author';
 
-    // Add event listeners to the book cards
-    document.querySelectorAll('.book-card').forEach(card => {
-        card.addEventListener('click', (e) => {
-            // Don't trigger if a button was clicked
-            if (e.target.tagName === 'BUTTON') return;
-            
-            const isbn = card.dataset.isbn;
-            showBookDetails(isbn);
-        });
-    });
+        return `
+            <div class="book-card" data-isbn="${isbn}">
+                <h3>${title}</h3>
+                <p>By ${author}</p>
+                <button class="view-details-btn">View Details</button>
+            </div>
+        `;
+    }).join('');
 
-    // Add event listeners to view details buttons
+    // Add event listeners
     document.querySelectorAll('.view-details-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const isbn = e.target.closest('.book-card').dataset.isbn;
@@ -244,59 +276,95 @@ function displayBooks(books, containerId) {
 async function showBookDetails(isbn) {
     try {
         const response = await fetch(`${API_BASE_URL}/isbn/${isbn}`);
-        const book = await response.json();
         
-        selectedBook = book;
-        
-        // Update UI
-        document.getElementById('book-title').textContent = book.title;
-        document.getElementById('book-author').textContent = `By ${book.author}`;
-        
-        // Load reviews
-        const reviewsResponse = await fetch(`${API_BASE_URL}/review/${isbn}`);
-        let reviews = await reviewsResponse.json();
-        
-        // Handle different review formats
-        if (typeof reviews === 'string') {
-            document.getElementById('reviews-list').innerHTML = `<p>${reviews}</p>`;
-        } else {
-            document.getElementById('reviews-list').innerHTML = Object.values(reviews).map(review => `
-                <div class="review-item">
-                    <strong>${review.username}</strong>
-                    <p>${review.review}</p>
-                    ${currentUser === review.username ? 
-                        `<button class="edit-review-btn" data-review-id="${Object.keys(reviews).find(key => reviews[key].username === review.username)}">Edit</button>` : ''}
-                </div>
-            `).join('');
-            
-            // Add event listeners to edit buttons
-            document.querySelectorAll('.edit-review-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const reviewId = e.target.dataset.reviewId;
-                    const review = reviews[reviewId];
-                    
-                    document.getElementById('review-text').value = review.review;
-                    document.getElementById('submit-review').style.display = 'none';
-                    document.getElementById('update-review').style.display = 'inline-block';
-                    document.getElementById('delete-review').style.display = 'inline-block';
-                    
-                    // Store the review ID for update/delete
-                    document.getElementById('update-review').dataset.reviewId = reviewId;
-                    document.getElementById('delete-review').dataset.reviewId = reviewId;
-                });
-            });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || 'Failed to fetch book details');
         }
+
+        const bookData = await response.json();
+        
+        // The API returns the book directly when fetching by ISBN
+        // No need to handle nested format here
+        if (!bookData || !bookData.title) {
+            throw new Error("Invalid book data received");
+        }
+
+        selectedBook = {
+            isbn: isbn,
+            title: bookData.title,
+            author: bookData.author,
+            reviews: bookData.reviews || {}
+        };
+
+        // Update UI
+        document.getElementById('book-title').textContent = selectedBook.title;
+        document.getElementById('book-author').textContent = `By ${selectedBook.author}`;
         
         // Reset review form
         document.getElementById('review-text').value = '';
-        document.getElementById('submit-review').style.display = 'inline-block';
         document.getElementById('update-review').style.display = 'none';
         document.getElementById('delete-review').style.display = 'none';
+        document.getElementById('submit-review').style.display = 'block';
+        
+        // Load reviews
+        await loadBookReviews(isbn);
         
         showSection('book-details');
     } catch (error) {
-        console.error('Error loading book details:', error);
-        alert('Error loading book details. Please try again.');
+        console.error('Error showing book details:', error);
+        alert(`Error loading book details: ${error.message}`);
+    }
+}
+
+async function loadBookReviews(isbn) {
+    const reviewsList = document.getElementById('reviews-list');
+    reviewsList.innerHTML = '<p>Loading reviews...</p>';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/review/${isbn}`);
+        
+        if (!response.ok) {
+            reviewsList.innerHTML = '<p>No reviews yet.</p>';
+            return;
+        }
+
+        const reviews = await response.json();
+        reviewsList.innerHTML = '';
+
+        if (reviews && typeof reviews === 'object' && Object.keys(reviews).length > 0) {
+            for (const reviewId in reviews) {
+                const review = reviews[reviewId];
+                const reviewElement = document.createElement('div');
+                reviewElement.className = 'review';
+                reviewElement.innerHTML = `
+                    <p><strong>${review.username}</strong>: ${review.review}</p>
+                    ${review.username === currentUser ? `
+                        <div class="review-actions">
+                            <button class="edit-review" data-review-id="${reviewId}">Edit</button>
+                        </div>
+                    ` : ''}
+                `;
+                reviewsList.appendChild(reviewElement);
+            }
+
+            // Add edit button listeners
+            document.querySelectorAll('.edit-review').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const reviewId = e.target.dataset.reviewId;
+                    const reviewText = e.target.closest('.review').querySelector('p').textContent.split(': ')[1];
+                    document.getElementById('review-text').value = reviewText;
+                    document.getElementById('update-review').style.display = 'block';
+                    document.getElementById('delete-review').style.display = 'block';
+                    document.getElementById('submit-review').style.display = 'none';
+                    document.getElementById('update-review').dataset.reviewId = reviewId;
+                });
+            });
+        } else {
+            reviewsList.innerHTML = '<p>No reviews yet.</p>';
+        }
+    } catch (error) {
+        reviewsList.innerHTML = '<p>Error loading reviews.</p>';
     }
 }
 
@@ -324,7 +392,6 @@ async function submitReview() {
         const result = await response.text();
         alert(result);
         
-        // Refresh the book details
         showBookDetails(selectedBook.isbn || Object.keys(selectedBook)[0]);
     } catch (error) {
         console.error('Error submitting review:', error);
@@ -352,7 +419,6 @@ async function updateReview() {
         const result = await response.text();
         alert(result);
         
-        // Refresh the book details
         showBookDetails(selectedBook.isbn || Object.keys(selectedBook)[0]);
     } catch (error) {
         console.error('Error updating review:', error);
@@ -376,7 +442,6 @@ async function deleteReview() {
         const result = await response.text();
         alert(result);
         
-        // Refresh the book details
         showBookDetails(selectedBook.isbn || Object.keys(selectedBook)[0]);
     } catch (error) {
         console.error('Error deleting review:', error);
@@ -388,44 +453,42 @@ async function loadUserReviews() {
     if (!currentUser) return;
 
     try {
-        // Get all books first
         const booksResponse = await fetch(`${API_BASE_URL}/`);
         const books = await booksResponse.json();
 
-        // Check each book for reviews by the current user
         let userReviews = [];
         
         for (const isbn in books) {
             const reviewResponse = await fetch(`${API_BASE_URL}/review/${isbn}`);
-            const reviews = await reviewResponse.json();
-            
-            if (typeof reviews !== 'string') { // Skip if no reviews
-                for (const reviewId in reviews) {
-                    if (reviews[reviewId].username === currentUser) {
-                        userReviews.push({
-                            book: books[isbn],
-                            review: reviews[reviewId]
-                        });
+            if (reviewResponse.ok) {
+                const reviews = await reviewResponse.json();
+                
+                if (typeof reviews === 'object' && !Array.isArray(reviews)) {
+                    for (const reviewId in reviews) {
+                        if (reviews[reviewId].username === currentUser) {
+                            userReviews.push({
+                                book: books[isbn],
+                                review: reviews[reviewId]
+                            });
+                        }
                     }
                 }
             }
         }
 
-        // Display user reviews
         const container = document.getElementById('reviews-container');
         if (userReviews.length === 0) {
             container.innerHTML = '<p>You have not submitted any reviews yet.</p>';
         } else {
             container.innerHTML = userReviews.map(item => `
                 <div class="review-item">
-                    <h3>${item.book.title}</h3>
-                    <p>By ${item.book.author}</p>
+                    <h3>${item.book.title || item.book[Object.keys(item.book)[0]].title}</h3>
+                    <p>By ${item.book.author || item.book[Object.keys(item.book)[0]].author}</p>
                     <p>${item.review.review}</p>
-                    <button class="edit-book-review" data-isbn="${isbn}">Edit Review</button>
+                    <button class="edit-book-review" data-isbn="${Object.keys(item.book)[0] || item.book.isbn}">Edit Review</button>
                 </div>
             `).join('');
 
-            // Add event listeners to edit buttons
             document.querySelectorAll('.edit-book-review').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const isbn = e.target.dataset.isbn;
